@@ -7,13 +7,15 @@ Este repositório contém uma versão editável do frontend reconstruída a part
 - Interface principal, navegação, identidade visual e dashboard: reconstruídos.
 - Logo e favicon: recuperados do site publicado.
 - Rotas de API do cliente: inventariadas em `docs/RECOVERY.md`.
-- Autenticação, tenants, banco de dados e integração LMS: dependem do backend original e não fazem parte dos arquivos públicos.
+- Integração LMS: cliente servidor implementado com OAuth2 Password e token isolado por tenant.
+- Banco de dados e credenciais reais: devem ser fornecidos no ambiente de execução e nunca enviados ao Git.
 - Os bundles publicados não oferecem source maps.
 
 ## Executar
 
 ```bash
 npm install
+Copy-Item .env.example .env
 npm run dev
 ```
 
@@ -21,7 +23,10 @@ Para gerar a versão de produção:
 
 ```bash
 npm run build
+npm start
 ```
+
+Consulte `docs/API_INTEGRATION.md` para configurar credenciais distintas por tenant.
 
 ## Segurança
 

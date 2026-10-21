@@ -60,3 +60,7 @@ Todos os caminhos correspondentes a `*.map` retornaram HTTP 404. Portanto, não 
 ## Limites
 
 Os nomes das rotas não revelam sua implementação no servidor. A reconstrução não inclui banco de dados, segredos, regras de autenticação nem código backend. Para restabelecer dados reais, será necessário obter o backend original ou especificar contratos equivalentes para essas rotas.
+
+## Atualização da integração
+
+Em 21/10/2026, a nova documentação foi analisada e o projeto recebeu um cliente servidor compatível com `POST /api/token`, Bearer token, renovação automática e credenciais separadas por tenant. Consulte `API_INTEGRATION.md`.

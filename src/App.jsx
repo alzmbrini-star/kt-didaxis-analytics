@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 const primaryItems = [
   ["Dashboard", "▦"],
@@ -11,7 +11,7 @@ const primaryItems = [
   ["Tempos de acesso", "◷"],
 ];
 
-const metrics = [
+const demoMetrics = [
   ["USUÁRIOS", "558", "452 ativos · 103 inativos · 3 bloq.", "♙"],
   ["CURSOS", "516", "516 ativos", "▤"],
   ["MATRÍCULAS", "17.489", "total da plataforma", "◎"],
@@ -55,10 +55,35 @@ function Sidebar({ current, onSelect }) {
   );
 }
 
-function Dashboard() {
+function formatNumber(value) {
+  return Number(value || 0).toLocaleString("pt-BR");
+}
+
+function formatPercent(value) {
+  return `${Number(value || 0).toLocaleString("pt-BR", { maximumFractionDigits: 1 })}%`;
+}
+
+function dashboardMetrics(liveData) {
+  const counts = liveData?.counts;
+  if (!counts) return demoMetrics;
+  return [
+    ["USUÁRIOS", formatNumber(counts.users), `${formatNumber(counts.activeUsers)} ativos · ${formatNumber(counts.inactiveUsers)} inativos · ${formatNumber(counts.blockedUsers)} bloq.`, "♙"],
+    ["CURSOS", formatNumber(counts.courses), "cursos únicos", "▤"],
+    ["MATRÍCULAS", formatNumber(counts.enrollments), "total no período", "◎"],
+    ["TAXA DE CONCLUSÃO", formatPercent(counts.completionRate), `${formatNumber(counts.completedEnrollments)} concluídas`, "↗"],
+    ["PROGRESSO MÉDIO", formatPercent(counts.averageProgress), "média das matrículas", "▥"],
+    ["TRILHAS", formatNumber(counts.trails), `${formatNumber(counts.activeTrails)} ativas`, "⌁"],
+    ["MEETINGS", formatNumber(counts.meetings), "reuniões disponíveis", "▣"],
+    ["CERTIFICAÇÕES", formatNumber(counts.certifications), `${formatNumber(counts.issuedCertifications)} emitidas`, "✹"],
+  ];
+}
+
+function Dashboard({ liveData, loading, error }) {
   const max = Math.max(...courses.map(([, value]) => value));
+  const metrics = dashboardMetrics(liveData);
   return (
     <>
+      {(loading || error) && <div className={`integration-banner ${error ? "error" : ""}`}>{error || "Consultando a API do tenant…"}</div>}
       <section className="metric-grid">
         {metrics.map(([label, value, note, icon]) => (
           <article className="metric-card" key={label}>
@@ -98,20 +123,61 @@ function Placeholder({ title }) {
 
 export default function App() {
   const [current, setCurrent] = useState("Dashboard");
+  const [tenants, setTenants] = useState([]);
+  const [activeTenantId, setActiveTenantId] = useState("");
+  const [liveData, setLiveData] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+  const [reloadKey, setReloadKey] = useState(0);
   const subtitle = useMemo(() => current === "Dashboard" ? "Acompanhe os principais indicadores do período selecionado." : `Visão recuperada de ${current.toLowerCase()}.`, [current]);
+  const activeTenant = tenants.find((tenant) => tenant.id === activeTenantId);
+
+  useEffect(() => {
+    fetch("/api/admin/tenants")
+      .then(async (response) => {
+        if (!response.ok) throw new Error("Não foi possível carregar os tenants configurados.");
+        return response.json();
+      })
+      .then((payload) => {
+        const available = (payload.tenants || []).filter((tenant) => tenant.status === "active");
+        setTenants(available);
+        setActiveTenantId((currentId) => currentId || available[0]?.id || "");
+      })
+      .catch((requestError) => setError(requestError.message));
+  }, []);
+
+  useEffect(() => {
+    if (!activeTenantId) return;
+    const query = new URLSearchParams({ tenantId: activeTenantId, section: "base" });
+    if (reloadKey) query.set("refresh", "1");
+    setLoading(true);
+    setError("");
+    fetch(`/api/lms/dashboard?${query}`)
+      .then(async (response) => {
+        const payload = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(payload.error || "Falha ao consultar a API Didaxis.");
+        return payload;
+      })
+      .then(setLiveData)
+      .catch((requestError) => setError(requestError.message))
+      .finally(() => setLoading(false));
+  }, [activeTenantId, reloadKey]);
+
+  const tenantName = activeTenant?.name || "Demonstração local";
+  const connectionLabel = liveData?.live ? "API CONECTADA" : activeTenantId ? "AGUARDANDO API" : "SEM CREDENCIAIS";
   return (
     <div className="app-shell">
       <Sidebar current={current} onSelect={setCurrent} />
       <main>
         <header>
-          <div className="filters"><label>▥ <select><option>Grupo Didaxis</option></select></label><label>▣ <select><option>Todo o histórico</option><option>Últimos 30 dias</option></select></label></div>
+          <div className="filters"><label>▥ <select value={activeTenantId} onChange={(event) => setActiveTenantId(event.target.value)} disabled={!tenants.length}>{tenants.length ? tenants.map((tenant) => <option key={tenant.id} value={tenant.id}>{tenant.name}</option>) : <option value="">Nenhum tenant configurado</option>}</select></label><label>▣ <select><option>Todo o histórico</option><option>Últimos 30 dias</option></select></label></div>
           <label className="search">⌕ <input placeholder="Buscar no portal…" /><kbd>Ctrl K</kbd></label>
           <button className="bell" aria-label="Notificações">♧</button>
           <button className="profile"><span>AL</span><i>Administrador<small>versão local</small></i><b>⌄</b></button>
         </header>
         <div className="content">
-          <div className="title-row"><div><p className="eyebrow">GRUPO DIDAXIS · TODO O HISTÓRICO <span>● MODO RECUPERADO</span></p><h1>{current}</h1><p>{subtitle}</p></div><button className="refresh">⟳ Atualizar dados</button></div>
-          {current === "Dashboard" ? <Dashboard /> : <Placeholder title={current} />}
+          <div className="title-row"><div><p className="eyebrow">{tenantName.toUpperCase()} · TODO O HISTÓRICO <span>● {connectionLabel}</span></p><h1>{current}</h1><p>{subtitle}</p></div><button className="refresh" disabled={loading || !activeTenantId} onClick={() => setReloadKey((value) => value + 1)}>⟳ {loading ? "Atualizando…" : "Atualizar dados"}</button></div>
+          {current === "Dashboard" ? <Dashboard liveData={liveData} loading={loading} error={error} /> : <Placeholder title={current} />}
         </div>
       </main>
     </div>
